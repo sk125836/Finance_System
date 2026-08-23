@@ -1,0 +1,8 @@
+{
+  "name": "Remix ProInvoice Manager",
+  "description": "Effortlessly generate invoices, export PDFs, and manage vendor history with an automated dashboard featuring advanced search and dark mode.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

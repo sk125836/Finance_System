@@ -1,0 +1,107 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-orange-50: var(--color-orange-50, #fff7ed);
+  --color-orange-100: var(--color-orange-100, #ffedd5);
+  --color-orange-200: var(--color-orange-200, #fed7aa);
+  --color-orange-300: var(--color-orange-300, #fdba74);
+  --color-orange-400: var(--color-orange-400, #fb923c);
+  --color-orange-500: var(--color-orange-500, #ea580c);
+  --color-orange-600: var(--color-orange-600, #c2410c);
+  --color-orange-700: var(--color-orange-700, #9a3412);
+  --color-orange-800: var(--color-orange-800, #7c2d12);
+  --color-orange-900: var(--color-orange-900, #431407);
+  --color-orange-950: var(--color-orange-950, #270b04);
+
+  --color-amber-400: var(--color-amber-400, #fbbf24);
+  --color-amber-500: var(--color-amber-500, #f59e0b);
+  --color-amber-600: var(--color-amber-600, #d97706);
+}
+
+:root {
+  --brand-primary: #ea580c;
+  --brand-primary-rgb: 234, 88, 12;
+  --brand-hover: #c2410c;
+  --brand-light: #fff7ed;
+  --brand-dark: #7c2d12;
+  --brand-accent: #f59e0b;
+  --brand-gradient-from: #ea580c;
+  --brand-gradient-to: #f59e0b;
+}
+
+@layer base {
+  * {
+    border-color: #e4e4e7;
+  }
+  .dark * {
+    border-color: #27272a;
+  }
+  
+  html {
+    color-scheme: light dark;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: #ffffff;
+    color: #18181b;
+  }
+
+  html.dark body {
+    background-color: #090a0d;
+    color: #f4f4f5;
+  }
+}
+
+/* Custom Sleek Scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(160, 160, 160, 0.25);
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(249, 115, 22, 0.6);
+}
+
+/* High Fidelity Print Styles */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  aside, header, nav, button, .no-print, input[type="checkbox"] {
+    display: none !important;
+  }
+
+  #invoice-render-target, #modal-invoice-render, #executive-report-target, #expense-ledger-target, #expense-voucher-target {
+    box-shadow: none !important;
+    border: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    padding: 20mm !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+  }
+}
+
