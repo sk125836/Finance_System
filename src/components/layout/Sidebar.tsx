@@ -1,8 +1,8 @@
 import React from 'react';
 import {
   LayoutDashboard,
-  FilePlus2,
   ReceiptText,
+  FilePlus2,
   Users,
   BarChart3,
   Settings,
@@ -13,19 +13,19 @@ import {
   Building2,
   PhoneCall,
   MapPin,
-  Bell,
-  TrendingDown,
-  Receipt,
   X,
-  Bot,
+  TrendingDown,
+  LogIn,
+  LogOut,
 } from 'lucide-react';
 import { useInvoice } from '../../context/InvoiceContext';
+import { useAuth } from '../../context/AuthContext';
 import { ZoolyumLogo } from '../common/ZoolyumLogo';
 
 export type NavigationTab =
   | 'dashboard'
-  | 'create'
   | 'invoices'
+  | 'create'
   | 'expenses'
   | 'reminders'
   | 'vendors'
@@ -39,10 +39,14 @@ interface SidebarProps {
   onCloseMobile?: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onOpenCreate, onCloseMobile }) => {
-  const { metrics, companyProfile, attentionSummary } = useInvoice();
-
-  const attentionCount = attentionSummary.allAttentionInvoices.length;
+export const Sidebar: React.FC<SidebarProps> = ({
+  activeTab,
+  setActiveTab,
+  onOpenCreate,
+  onCloseMobile,
+}) => {
+  const { metrics, companyProfile } = useInvoice();
+  const { user, logout, openAuthModal } = useAuth();
 
   const handleSelectTab = (tab: NavigationTab) => {
     setActiveTab(tab);
@@ -59,34 +63,32 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onOpe
       badge: null,
     },
     {
-      id: 'create' as NavigationTab,
-      label: 'Invoice Generator',
-      icon: FilePlus2,
-      badge: 'Quick',
-      badgeColor: 'bg-orange-500/20 text-orange-400 border border-orange-500/30',
+      id: 'invoices' as NavigationTab,
+      label: 'All Invoices',
+      icon: ReceiptText,
+      badge: metrics.totalInvoicesCount.toString(),
+      badgeColor: 'bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300',
     },
     {
-      id: 'invoices' as NavigationTab,
-      label: 'Invoice History',
-      icon: ReceiptText,
-      badge: metrics.totalInvoicesCount,
-      badgeColor: 'bg-zinc-800 text-zinc-300 border border-zinc-700',
+      id: 'create' as NavigationTab,
+      label: 'Create Invoice',
+      icon: FilePlus2,
+      badge: 'Fast',
+      badgeColor: 'bg-orange-500/10 text-orange-500 border border-orange-500/20',
     },
     {
       id: 'expenses' as NavigationTab,
-      label: 'Expense Manager',
+      label: 'Expenses Ledger',
       icon: TrendingDown,
-      badge: metrics.expensesCount > 0 ? metrics.expensesCount : null,
-      badgeColor: 'bg-red-500/10 text-red-500 border border-red-500/20',
+      badge: metrics.expensesCount > 0 ? `${metrics.expensesCount}` : null,
+      badgeColor: 'bg-rose-500/10 text-rose-500 border border-rose-500/20',
     },
     {
       id: 'reminders' as NavigationTab,
       label: 'Payment Reminders',
-      icon: Bell,
-      badge: attentionCount > 0 ? `${attentionCount} Alerts` : null,
-      badgeColor: attentionSummary.overdueInvoices.length > 0
-        ? 'bg-red-500/20 text-red-500 border border-red-500/40 animate-pulse'
-        : 'bg-amber-500/20 text-amber-400 border border-amber-500/30',
+      icon: Clock,
+      badge: metrics.overdueCount > 0 ? `${metrics.overdueCount} Overdue` : 'Auto',
+      badgeColor: metrics.overdueCount > 0 ? 'bg-red-500/20 text-red-500 font-bold' : 'bg-blue-500/10 text-blue-400 border border-blue-500/20',
     },
     {
       id: 'vendors' as NavigationTab,
@@ -126,7 +128,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onOpe
             {onCloseMobile && (
               <button
                 onClick={onCloseMobile}
-                className="lg:hidden p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
+                className="lg:hidden p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer"
                 title="Close Navigation"
               >
                 <X className="w-5 h-5" />
@@ -149,8 +151,45 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onOpe
         </button>
       </div>
 
+      {/* User Status Bar */}
+      <div className="px-3 pt-3">
+        {user ? (
+          <div className="p-2.5 rounded-xl bg-orange-500/5 dark:bg-orange-500/10 border border-orange-500/20 flex items-center justify-between">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-7 h-7 rounded-lg bg-orange-500 text-white flex items-center justify-center font-bold text-xs shrink-0">
+                {user.name.charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 truncate">{user.name}</div>
+                <div className="text-[10px] text-zinc-500 truncate">{user.email}</div>
+              </div>
+            </div>
+            <button
+              onClick={logout}
+              title="Sign Out"
+              className="p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition cursor-pointer"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={openAuthModal}
+            className="w-full p-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 flex items-center justify-between text-xs font-semibold transition cursor-pointer"
+          >
+            <div className="flex items-center gap-2">
+              <LogIn className="w-4 h-4 text-orange-500 shrink-0" />
+              <span className="truncate">Account Sign In</span>
+            </div>
+            <span className="text-[10px] bg-orange-500 text-white px-2 py-0.5 rounded-full font-bold shrink-0">
+              Sign In
+            </span>
+          </button>
+        )}
+      </div>
+
       {/* Navigation Links */}
-      <div className="flex-1 overflow-y-auto px-3 py-3 sm:py-4 space-y-1 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-1 custom-scrollbar">
         <div className="px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
           Main Menu
         </div>
@@ -161,23 +200,24 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onOpe
             <button
               key={item.id}
               onClick={() => handleSelectTab(item.id)}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-xs sm:text-sm transition-all duration-200 group cursor-pointer ${
+              className={`w-full flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl font-medium text-xs sm:text-sm transition-all duration-150 cursor-pointer ${
                 isActive
-                  ? 'bg-orange-50 dark:bg-gradient-to-r dark:from-orange-500/15 dark:via-orange-500/10 dark:to-transparent text-orange-600 dark:text-orange-400 border-l-4 border-orange-500 shadow-sm font-semibold pl-3'
-                  : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-900/70'
+                  ? 'bg-orange-500/10 dark:bg-orange-500/15 text-orange-600 dark:text-orange-400 font-semibold border border-orange-500/20'
+                  : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-900/60 hover:text-zinc-900 dark:hover:text-zinc-200'
               }`}
             >
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2.5 min-w-0 flex-1">
                 <Icon
-                  className={`w-4 h-4 transition-transform group-hover:scale-110 shrink-0 ${
-                    isActive ? 'text-orange-600 dark:text-orange-400' : 'text-zinc-400 dark:text-zinc-400 group-hover:text-zinc-700 dark:group-hover:text-zinc-200'
+                  className={`w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0 transition-colors ${
+                    isActive ? 'text-orange-500' : 'text-zinc-400 dark:text-zinc-500'
                   }`}
                 />
-                <span className="truncate">{item.label}</span>
+                <span className="truncate whitespace-nowrap">{item.label}</span>
               </div>
-              {item.badge !== null && (
+
+              {item.badge && (
                 <span
-                  className={`text-[10px] sm:text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${
+                  className={`text-[10px] sm:text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0 whitespace-nowrap ${
                     item.badgeColor || 'bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300'
                   }`}
                 >
@@ -246,4 +286,3 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onOpe
     </aside>
   );
 };
-

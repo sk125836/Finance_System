@@ -9,11 +9,13 @@ import {
   FileSpreadsheet,
   FileText,
   Menu,
-  Sparkles,
-  RefreshCcw,
+  LogOut,
+  LogIn,
+  Shield,
 } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useInvoice } from '../../context/InvoiceContext';
+import { useAuth } from '../../context/AuthContext';
 import { SUPPORTED_CURRENCIES } from '../../types/mockData';
 import { NotificationCenter } from '../reminders/NotificationCenter';
 import { NavigationTab } from './Sidebar';
@@ -33,6 +35,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onNavigateToTab,
 }) => {
   const { theme, toggleTheme } = useTheme();
+  const { user, logout, openAuthModal } = useAuth();
   const {
     filters,
     setFilters,
@@ -41,13 +44,12 @@ export const Navbar: React.FC<NavbarProps> = ({
     setActiveCurrency,
     exportToCSV,
     exportToExcelData,
-    resetToSampleData,
     filteredInvoices,
     setSelectedInvoiceForReminder,
   } = useInvoice();
 
   const [showExportMenu, setShowExportMenu] = useState(false);
-  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
 
   return (
     <header className="h-16 px-4 md:px-6 bg-white dark:bg-zinc-950 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between gap-4 sticky top-0 z-20 transition-colors duration-300">
@@ -86,7 +88,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
       </div>
 
-      {/* Right: Currency selector, Dark mode toggle, Export dropdown, Create Button */}
+      {/* Right: Currency, User Auth, Dark mode, Export, Create */}
       <div className="flex items-center gap-2 md:gap-3">
         {/* Automated Payment Reminder Notification Center */}
         <NotificationCenter
@@ -163,7 +165,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           )}
         </div>
 
-        {/* Dark / Light Mode Toggle Button with Smooth Transition */}
+        {/* Dark / Light Mode Toggle Button */}
         <button
           onClick={toggleTheme}
           className="p-2 rounded-xl bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 transition-all duration-300 cursor-pointer group"
@@ -176,6 +178,56 @@ export const Navbar: React.FC<NavbarProps> = ({
             <Moon className="w-4 h-4 text-zinc-600 group-hover:-rotate-12 transition-transform duration-300" />
           )}
         </button>
+
+        {/* User Account / Login Button */}
+        <div className="relative">
+          {user ? (
+            <div>
+              <button
+                onClick={() => setShowUserMenu(!showUserMenu)}
+                className="flex items-center gap-2 p-1 pl-2 pr-3 rounded-xl bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-200 transition cursor-pointer"
+              >
+                <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-orange-500 to-amber-500 text-white font-bold text-xs flex items-center justify-center shadow-sm">
+                  {user.name.charAt(0).toUpperCase()}
+                </div>
+                <span className="text-xs font-semibold max-w-[90px] truncate hidden md:inline">
+                  {user.name.split(' ')[0]}
+                </span>
+              </button>
+
+              {showUserMenu && (
+                <div
+                  className="absolute right-0 mt-2 w-52 bg-white dark:bg-zinc-900 rounded-xl shadow-xl border border-zinc-200 dark:border-zinc-800 py-2 z-50 animate-in fade-in zoom-in-95 duration-150"
+                  onClick={() => setShowUserMenu(false)}
+                >
+                  <div className="px-3.5 py-2 border-b border-zinc-100 dark:border-zinc-800">
+                    <div className="text-xs font-bold text-zinc-900 dark:text-white truncate">{user.name}</div>
+                    <div className="text-[11px] text-zinc-500 truncate">{user.email}</div>
+                    <div className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                      <Shield className="w-2.5 h-2.5" />
+                      <span>Cloud Database Synced</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={logout}
+                    className="w-full text-left px-3.5 py-2 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 flex items-center gap-2 font-medium transition cursor-pointer mt-1"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Sign Out</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={openAuthModal}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/20 transition cursor-pointer"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span>Sign In / Account</span>
+            </button>
+          )}
+        </div>
 
         {/* Quick New Invoice Button */}
         {onOpenCreateInvoice && (

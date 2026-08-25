@@ -1,8 +1,22 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
-import { Invoice, ClientVendor, CompanyProfile, FilterOptions, InvoiceStatus, ReminderLog, AutomationSettings, Expense, ExpenseCategory } from '../types/invoice';
+import { Invoice, ClientVendor, CompanyProfile, FilterOptions, InvoiceStatus, ReminderLog, AutomationSettings, Expense } from '../types/invoice';
 import { DEFAULT_ZOOLYUM_PROFILE, INITIAL_CLIENTS, INITIAL_INVOICES, INITIAL_EXPENSES, SUPPORTED_CURRENCIES } from '../types/mockData';
 import { DEFAULT_AUTOMATION_SETTINGS, ReminderTemplateType, getInvoicesRequiringReminders, generateEmailContent } from '../utils/reminderService';
 import { applyDynamicTheme, extractDominantColor, generatePaletteFromPrimary, BrandPalette } from '../utils/colorExtractor';
+import { useAuth } from './AuthContext';
+import {
+  syncInvoiceToSupabase,
+  fetchInvoicesFromSupabase,
+  deleteInvoiceFromSupabase,
+  syncClientToSupabase,
+  fetchClientsFromSupabase,
+  deleteClientFromSupabase,
+  syncExpenseToSupabase,
+  fetchExpensesFromSupabase,
+  deleteExpenseFromSupabase,
+  syncCompanyProfileToSupabase,
+  fetchCompanyProfileFromSupabase,
+} from '../utils/supabaseSync';
 
 interface DashboardMetrics {
   totalInvoiced: number;
@@ -89,6 +103,8 @@ interface InvoiceContextType {
   exportToJSON: () => void;
   importFromJSON: (jsonData: string) => boolean;
   resetToSampleData: () => void;
+  isDbConnected: boolean;
+  refreshData: () => Promise<void>;
 }
 
 const defaultFilters: FilterOptions = {
@@ -102,85 +118,55 @@ const defaultFilters: FilterOptions = {
 const InvoiceContext = createContext<InvoiceContextType | undefined>(undefined);
 
 export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // LocalStorage initialization with mock fallback and legacy defaults migration
+  const { user, token } = useAuth();
+
+  // Storage key helper for user data isolation
+  const getStorageKey = (prefix: string) => {
+    return user?.id ? `${prefix}_user_${user.id}` : `${prefix}_guest`;
+  };
+
   const [invoices, setInvoices] = useState<Invoice[]>(() => {
     try {
-      const saved = localStorage.getItem('zoolyum_invoices');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          return parsed.map((inv: Invoice) => {
-            if (inv.company) {
-              const updatedCompany = { ...inv.company };
-              if (updatedCompany.authorizedSignerName === 'Sakib Chowdhury' || !updatedCompany.authorizedSignerName) {
-                updatedCompany.authorizedSignerName = 'John Dewey';
-              }
-              if (updatedCompany.name === 'Zoolyum' || updatedCompany.name === 'Zoolyum Agency Ltd.' || !updatedCompany.name) {
-                updatedCompany.name = 'Your Company';
-              }
-              if (
-                updatedCompany.address === 'Mirpur 11, Dhaka-1216' ||
-                updatedCompany.address === 'Mirpur 11, Dhaka' ||
-                updatedCompany.address === 'Mirpur 11, Dhaka-1216, Bangladesh' ||
-                !updatedCompany.address
-              ) {
-                updatedCompany.address = 'Mirpur 10, Dhaka-1216';
-              }
-              return { ...inv, company: updatedCompany };
-            }
-            return inv;
-          });
-        }
-      }
-      return INITIAL_INVOICES;
+      const key = user?.id ? `zoolyum_invoices_user_${user.id}` : 'zoolyum_invoices_guest';
+      const saved = localStorage.getItem(key);
+      return saved ? JSON.parse(saved) : [];
     } catch {
-      return INITIAL_INVOICES;
+      return [];
     }
   });
 
   const [clients, setClients] = useState<ClientVendor[]>(() => {
     try {
-      const saved = localStorage.getItem('zoolyum_clients');
-      return saved ? JSON.parse(saved) : INITIAL_CLIENTS;
+      const key = user?.id ? `zoolyum_clients_user_${user.id}` : 'zoolyum_clients_guest';
+      const saved = localStorage.getItem(key);
+      return saved ? JSON.parse(saved) : [];
     } catch {
-      return INITIAL_CLIENTS;
+      return [];
     }
   });
 
   const [expenses, setExpenses] = useState<Expense[]>(() => {
     try {
-      const saved = localStorage.getItem('zoolyum_expenses');
-      return saved ? JSON.parse(saved) : INITIAL_EXPENSES;
+      const key = user?.id ? `zoolyum_expenses_user_${user.id}` : 'zoolyum_expenses_guest';
+      const saved = localStorage.getItem(key);
+      return saved ? JSON.parse(saved) : [];
     } catch {
-      return INITIAL_EXPENSES;
+      return [];
     }
   });
 
   const [companyProfile, setCompanyProfile] = useState<CompanyProfile>(() => {
     try {
-      const saved = localStorage.getItem('zoolyum_company_profile');
+      const key = user?.id ? `zoolyum_company_profile_user_${user.id}` : 'zoolyum_company_profile_guest';
+      const saved = localStorage.getItem(key);
       if (saved) {
-        const parsed = JSON.parse(saved);
-        // Automatically migrate legacy default values if present in stored localStorage
-        if (parsed.authorizedSignerName === 'Sakib Chowdhury' || !parsed.authorizedSignerName) {
-          parsed.authorizedSignerName = 'John Dewey';
-        }
-        if (parsed.name === 'Zoolyum' || parsed.name === 'Zoolyum Agency Ltd.' || !parsed.name) {
-          parsed.name = 'Your Company';
-        }
-        if (
-          parsed.address === 'Mirpur 11, Dhaka-1216' ||
-          parsed.address === 'Mirpur 11, Dhaka' ||
-          parsed.address === 'Mirpur 11, Dhaka-1216, Bangladesh' ||
-          !parsed.address
-        ) {
-          parsed.address = 'Mirpur 10, Dhaka-1216';
-        }
-        const merged = { ...DEFAULT_ZOOLYUM_PROFILE, ...parsed };
-        localStorage.setItem('zoolyum_company_profile', JSON.stringify(merged));
-        return merged;
+        return { ...DEFAULT_ZOOLYUM_PROFILE, ...JSON.parse(saved) };
       }
-      return DEFAULT_ZOOLYUM_PROFILE;
+      return {
+        ...DEFAULT_ZOOLYUM_PROFILE,
+        name: user?.name ? `${user.name}'s Company` : 'Your Company',
+        email: user?.email || DEFAULT_ZOOLYUM_PROFILE.email,
+      };
     } catch {
       return DEFAULT_ZOOLYUM_PROFILE;
     }
@@ -188,13 +174,15 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const [automationSettings, setAutomationSettings] = useState<AutomationSettings>(() => {
     try {
-      const saved = localStorage.getItem('zoolyum_automation_settings');
+      const key = user?.id ? `zoolyum_automation_user_${user.id}` : 'zoolyum_automation_guest';
+      const saved = localStorage.getItem(key);
       return saved ? JSON.parse(saved) : DEFAULT_AUTOMATION_SETTINGS;
     } catch {
       return DEFAULT_AUTOMATION_SETTINGS;
     }
   });
 
+  const [isDbConnected, setIsDbConnected] = useState(false);
   const [selectedInvoiceForReminder, setSelectedInvoiceForReminder] = useState<Invoice | null>(null);
 
   const [activeCurrency, setActiveCurrency] = useState<{ symbol: string; code: string; name: string }>(
@@ -203,6 +191,157 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const [filters, setFilters] = useState<FilterOptions>(defaultFilters);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+
+  // Helper headers with auth token if logged in
+  const getAuthHeaders = () => {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    return headers;
+  };
+
+  // Load from Supabase & PostgreSQL database on user change or mount
+  const fetchFromDatabase = async () => {
+    try {
+      // If user is not logged in, maintain current isolated guest state
+      if (!user && !token) {
+        setIsDbConnected(true);
+        return;
+      }
+
+      // 1. First fetch directly from Supabase
+      const [supaInvoices, supaClients, supaExpenses, supaProfile] = await Promise.all([
+        fetchInvoicesFromSupabase(user?.id),
+        fetchClientsFromSupabase(user?.id),
+        fetchExpensesFromSupabase(user?.id),
+        fetchCompanyProfileFromSupabase(user?.id),
+      ]);
+
+      let hasSupabaseData = false;
+
+      if (supaInvoices && Array.isArray(supaInvoices)) {
+        setInvoices(supaInvoices);
+        hasSupabaseData = true;
+      }
+
+      if (supaClients && Array.isArray(supaClients)) {
+        setClients(supaClients);
+        hasSupabaseData = true;
+      }
+
+      if (supaExpenses && Array.isArray(supaExpenses)) {
+        setExpenses(supaExpenses);
+        hasSupabaseData = true;
+      }
+
+      if (supaProfile && supaProfile.name) {
+        setCompanyProfile(supaProfile);
+        hasSupabaseData = true;
+      }
+
+      // 2. Also fetch and keep backend synchronized
+      const headers = getAuthHeaders();
+      const [invRes, clientRes, expRes, profileRes] = await Promise.all([
+        fetch('/api/invoices', { headers }),
+        fetch('/api/clients', { headers }),
+        fetch('/api/expenses', { headers }),
+        fetch('/api/company-profile', { headers }),
+      ]);
+
+      if (!hasSupabaseData && invRes.ok) {
+        const invData = await invRes.json();
+        if (Array.isArray(invData)) {
+          const formattedInvoices = invData.map((inv: any) => ({
+            ...inv,
+            subtotal: Number(inv.subtotal) || 0,
+            taxRate: Number(inv.taxRate) || 0,
+            taxAmount: Number(inv.taxAmount) || 0,
+            discountRate: Number(inv.discountRate) || 0,
+            discountAmount: Number(inv.discountAmount) || 0,
+            shippingFee: Number(inv.shippingFee) || 0,
+            totalAmount: Number(inv.totalAmount) || 0,
+            paidAmount: Number(inv.paidAmount) || 0,
+            balanceDue: Number(inv.balanceDue) || 0,
+          }));
+          setInvoices(formattedInvoices);
+        }
+      }
+
+      if (!hasSupabaseData && clientRes.ok) {
+        const clientData = await clientRes.json();
+        if (Array.isArray(clientData)) {
+          setClients(clientData.map((c: any) => ({
+            ...c,
+            totalBilled: Number(c.totalBilled) || 0,
+            invoicesCount: Number(c.invoicesCount) || 0,
+          })));
+        }
+      }
+
+      if (!hasSupabaseData && expRes.ok) {
+        const expData = await expRes.json();
+        if (Array.isArray(expData)) {
+          setExpenses(expData.map((e: any) => ({
+            ...e,
+            amount: Number(e.amount) || 0,
+          })));
+        }
+      }
+
+      if (!hasSupabaseData && profileRes.ok) {
+        const profileData = await profileRes.json();
+        if (profileData && profileData.name) {
+          setCompanyProfile((prev) => ({ ...prev, ...profileData }));
+        } else if (user) {
+          setCompanyProfile((prev) => ({
+            ...prev,
+            name: user.name ? `${user.name}'s Company` : prev.name,
+            email: user.email || prev.email,
+          }));
+        }
+      }
+
+      setIsDbConnected(true);
+    } catch (err) {
+      console.warn('Using fallback state:', err);
+    }
+  };
+
+  // Switch local state cleanly whenever user logs in or out
+  useEffect(() => {
+    if (user?.id) {
+      const invKey = `zoolyum_invoices_user_${user.id}`;
+      const clKey = `zoolyum_clients_user_${user.id}`;
+      const expKey = `zoolyum_expenses_user_${user.id}`;
+      const profKey = `zoolyum_company_profile_user_${user.id}`;
+
+      try {
+        const localInv = localStorage.getItem(invKey);
+        setInvoices(localInv ? JSON.parse(localInv) : []);
+
+        const localCl = localStorage.getItem(clKey);
+        setClients(localCl ? JSON.parse(localCl) : []);
+
+        const localExp = localStorage.getItem(expKey);
+        setExpenses(localExp ? JSON.parse(localExp) : []);
+
+        const localProf = localStorage.getItem(profKey);
+        setCompanyProfile(localProf ? JSON.parse(localProf) : {
+          ...DEFAULT_ZOOLYUM_PROFILE,
+          name: user.name ? `${user.name}'s Company` : 'Your Company',
+          email: user.email || DEFAULT_ZOOLYUM_PROFILE.email,
+        });
+      } catch {
+        setInvoices([]);
+        setClients([]);
+        setExpenses([]);
+      }
+    }
+    fetchFromDatabase();
+  }, [user?.id, token]);
 
   // Dynamic Brand Palette derived from company profile brand color
   const brandPalette = useMemo(() => {
@@ -215,26 +354,31 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     applyDynamicTheme(companyProfile.brandColor || '#ea580c');
   }, [companyProfile.brandColor]);
 
-  // Sync to LocalStorage
+  // Sync to LocalStorage scoped to current user as resilient cache
   useEffect(() => {
-    localStorage.setItem('zoolyum_invoices', JSON.stringify(invoices));
-  }, [invoices]);
+    const key = user?.id ? `zoolyum_invoices_user_${user.id}` : 'zoolyum_invoices_guest';
+    localStorage.setItem(key, JSON.stringify(invoices));
+  }, [invoices, user?.id]);
 
   useEffect(() => {
-    localStorage.setItem('zoolyum_clients', JSON.stringify(clients));
-  }, [clients]);
+    const key = user?.id ? `zoolyum_clients_user_${user.id}` : 'zoolyum_clients_guest';
+    localStorage.setItem(key, JSON.stringify(clients));
+  }, [clients, user?.id]);
 
   useEffect(() => {
-    localStorage.setItem('zoolyum_expenses', JSON.stringify(expenses));
-  }, [expenses]);
+    const key = user?.id ? `zoolyum_expenses_user_${user.id}` : 'zoolyum_expenses_guest';
+    localStorage.setItem(key, JSON.stringify(expenses));
+  }, [expenses, user?.id]);
 
   useEffect(() => {
-    localStorage.setItem('zoolyum_company_profile', JSON.stringify(companyProfile));
-  }, [companyProfile]);
+    const key = user?.id ? `zoolyum_company_profile_user_${user.id}` : 'zoolyum_company_profile_guest';
+    localStorage.setItem(key, JSON.stringify(companyProfile));
+  }, [companyProfile, user?.id]);
 
   useEffect(() => {
-    localStorage.setItem('zoolyum_automation_settings', JSON.stringify(automationSettings));
-  }, [automationSettings]);
+    const key = user?.id ? `zoolyum_automation_user_${user.id}` : 'zoolyum_automation_guest';
+    localStorage.setItem(key, JSON.stringify(automationSettings));
+  }, [automationSettings, user?.id]);
 
   const updateAutomationSettings = (newSettings: Partial<AutomationSettings>) => {
     setAutomationSettings((prev) => ({ ...prev, ...newSettings }));
@@ -249,49 +393,66 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       sentAt: timestamp,
     };
 
-    setInvoices((prevInvoices) =>
-      prevInvoices.map((inv) => {
+    setInvoices((prev) =>
+      prev.map((inv) => {
         if (inv.id === invoiceId) {
-          const currentLogs = inv.remindersSent || [];
-          return {
+          const updatedReminders = [newLog, ...(inv.remindersSent || [])];
+          const updatedInvoice = {
             ...inv,
-            remindersSent: [newLog, ...currentLogs],
+            remindersSent: updatedReminders,
             lastReminderSentAt: timestamp,
+            updatedAt: timestamp,
           };
+          syncInvoiceToSupabase(updatedInvoice, user?.id);
+          // Persist to PostgreSQL backend
+          fetch('/api/invoices', {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(updatedInvoice),
+          }).catch(() => {});
+          return updatedInvoice;
         }
         return inv;
       })
     );
   };
 
-  // Send bulk reminders
+  // Bulk send reminder simulation
   const sendBulkReminders = async (
     invoiceIds: string[],
-    templateType?: ReminderTemplateType
+    templateType: ReminderTemplateType = 'approaching'
   ): Promise<number> => {
-    const timestamp = new Date().toISOString();
     let count = 0;
+    const nowIso = new Date().toISOString();
 
-    setInvoices((prevInvoices) =>
-      prevInvoices.map((inv) => {
+    setInvoices((prev) =>
+      prev.map((inv) => {
         if (invoiceIds.includes(inv.id)) {
+          count++;
           const emailData = generateEmailContent(inv, templateType);
           const newLog: ReminderLog = {
-            id: `rem-bulk-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
-            sentAt: timestamp,
-            recipientEmail: emailData.recipientEmail,
-            recipientName: emailData.recipientName,
+            id: `bulk-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+            sentAt: nowIso,
+            recipientEmail: inv.client.email,
+            recipientName: inv.client.name,
             subject: emailData.subject,
-            type: emailData.templateType,
+            type: templateType,
             channel: 'email',
-            notes: `Batch automated reminder processed via Zoolyum Mailer Hub.`,
+            notes: 'Sent via automated batch scheduler',
           };
-          count++;
-          return {
+          const updatedInvoice = {
             ...inv,
             remindersSent: [newLog, ...(inv.remindersSent || [])],
-            lastReminderSentAt: timestamp,
+            lastReminderSentAt: nowIso,
+            updatedAt: nowIso,
           };
+          syncInvoiceToSupabase(updatedInvoice, user?.id);
+          fetch('/api/invoices', {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(updatedInvoice),
+          }).catch(() => {});
+          return updatedInvoice;
         }
         return inv;
       })
@@ -337,6 +498,16 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     setInvoices((prev) => [newInvoice, ...prev]);
 
+    // 1. Sync to Supabase
+    syncInvoiceToSupabase(newInvoice, user?.id);
+
+    // 2. Sync to Backend Database
+    fetch('/api/invoices', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(newInvoice),
+    }).catch((err) => console.error('Failed to post invoice to backend:', err));
+
     // If client is new, automatically add client
     if (invoiceData.client.name) {
       const exists = clients.some(
@@ -355,6 +526,12 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           invoicesCount: 1,
         };
         setClients((prev) => [newClient, ...prev]);
+        syncClientToSupabase(newClient, user?.id);
+        fetch('/api/clients', {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify(newClient),
+        }).catch(() => {});
       }
     }
 
@@ -363,20 +540,33 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const updateInvoice = (id: string, updatedFields: Partial<Invoice>) => {
     setInvoices((prev) =>
-      prev.map((inv) =>
-        inv.id === id
-          ? {
-              ...inv,
-              ...updatedFields,
-              updatedAt: new Date().toISOString(),
-            }
-          : inv
-      )
+      prev.map((inv) => {
+        if (inv.id === id) {
+          const updated = {
+            ...inv,
+            ...updatedFields,
+            updatedAt: new Date().toISOString(),
+          };
+          syncInvoiceToSupabase(updated, user?.id);
+          fetch('/api/invoices', {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(updated),
+          }).catch(() => {});
+          return updated;
+        }
+        return inv;
+      })
     );
   };
 
   const deleteInvoice = (id: string) => {
     setInvoices((prev) => prev.filter((inv) => inv.id !== id));
+    deleteInvoiceFromSupabase(id);
+    fetch(`/api/invoices/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    }).catch(() => {});
   };
 
   const duplicateInvoice = (id: string): Invoice => {
@@ -398,6 +588,12 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
 
     setInvoices((prev) => [newInvoice, ...prev]);
+    syncInvoiceToSupabase(newInvoice, user?.id);
+    fetch('/api/invoices', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(newInvoice),
+    }).catch(() => {});
     return newInvoice;
   };
 
@@ -406,13 +602,20 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       prev.map((inv) => {
         if (inv.id === id) {
           const isPaid = status === 'paid';
-          return {
+          const updated = {
             ...inv,
             status,
             paidAmount: isPaid ? inv.totalAmount : status === 'draft' ? 0 : inv.paidAmount,
             balanceDue: isPaid ? 0 : inv.totalAmount - (status === 'draft' ? 0 : inv.paidAmount),
             updatedAt: new Date().toISOString(),
           };
+          syncInvoiceToSupabase(updated, user?.id);
+          fetch('/api/invoices', {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(updated),
+          }).catch(() => {});
+          return updated;
         }
         return inv;
       })
@@ -427,17 +630,40 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       invoicesCount: 0,
     };
     setClients((prev) => [newClient, ...prev]);
+    syncClientToSupabase(newClient, user?.id);
+    fetch('/api/clients', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(newClient),
+    }).catch(() => {});
     return newClient;
   };
 
   const updateClient = (id: string, updatedFields: Partial<ClientVendor>) => {
     setClients((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, ...updatedFields } : c))
+      prev.map((c) => {
+        if (c.id === id) {
+          const updated = { ...c, ...updatedFields };
+          syncClientToSupabase(updated, user?.id);
+          fetch('/api/clients', {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(updated),
+          }).catch(() => {});
+          return updated;
+        }
+        return c;
+      })
     );
   };
 
   const deleteClient = (id: string) => {
     setClients((prev) => prev.filter((c) => c.id !== id));
+    deleteClientFromSupabase(id);
+    fetch(`/api/clients/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    }).catch(() => {});
   };
 
   // Expense CRUD Actions
@@ -450,25 +676,44 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       updatedAt: new Date().toISOString(),
     };
     setExpenses((prev) => [newExpense, ...prev]);
+    syncExpenseToSupabase(newExpense, user?.id);
+    fetch('/api/expenses', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(newExpense),
+    }).catch(() => {});
     return newExpense;
   };
 
   const updateExpense = (id: string, updatedFields: Partial<Expense>) => {
     setExpenses((prev) =>
-      prev.map((exp) =>
-        exp.id === id
-          ? {
-              ...exp,
-              ...updatedFields,
-              updatedAt: new Date().toISOString(),
-            }
-          : exp
-      )
+      prev.map((exp) => {
+        if (exp.id === id) {
+          const updated = {
+            ...exp,
+            ...updatedFields,
+            updatedAt: new Date().toISOString(),
+          };
+          syncExpenseToSupabase(updated, user?.id);
+          fetch('/api/expenses', {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(updated),
+          }).catch(() => {});
+          return updated;
+        }
+        return exp;
+      })
     );
   };
 
   const deleteExpense = (id: string) => {
     setExpenses((prev) => prev.filter((exp) => exp.id !== id));
+    deleteExpenseFromSupabase(id);
+    fetch(`/api/expenses/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    }).catch(() => {});
   };
 
   const exportExpensesToCSV = (selectedExpenses?: Expense[]) => {
@@ -580,42 +825,48 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const updateCompanyProfile = (profile: Partial<CompanyProfile>) => {
+    const nextProfile = { ...companyProfile, ...profile };
     setCompanyProfile((prev) => {
-      const nextProfile = { ...prev, ...profile };
-      // If a brand color is supplied, immediately apply
+      const merged = { ...prev, ...profile };
       if (profile.brandColor) {
         applyDynamicTheme(profile.brandColor);
       }
-      return nextProfile;
+      return merged;
     });
 
-    // If logo was changed and no explicit brandColor was provided, auto extract
+    syncCompanyProfileToSupabase(nextProfile, user?.id);
+
+    fetch('/api/company-profile', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(nextProfile),
+    }).catch(() => {});
+
     if (profile.logoUrl && !profile.brandColor) {
       extractDominantColor(profile.logoUrl).then(({ primary, brandPalette: newPal }) => {
-        setCompanyProfile((prev) => ({
-          ...prev,
+        const withColor = {
+          ...nextProfile,
           brandColor: primary,
           brandColorPalette: newPal,
-        }));
+        };
+        setCompanyProfile(withColor);
+        syncCompanyProfileToSupabase(withColor, user?.id);
         applyDynamicTheme(newPal);
       });
-    } else if (profile.logoUrl === '' && !profile.brandColor) {
-      // If logo removed, reset to default brand orange
-      setCompanyProfile((prev) => ({
-        ...prev,
-        brandColor: '#ea580c',
-      }));
-      applyDynamicTheme('#ea580c');
     }
   };
 
   const setBrandColor = (hexColor: string) => {
     const palette = applyDynamicTheme(hexColor);
-    setCompanyProfile((prev) => ({
-      ...prev,
-      brandColor: hexColor,
-      brandColorPalette: palette,
-    }));
+    setCompanyProfile((prev) => {
+      const updated = {
+        ...prev,
+        brandColor: hexColor,
+        brandColorPalette: palette,
+      };
+      syncCompanyProfileToSupabase(updated, user?.id);
+      return updated;
+    });
   };
 
   const extractAndApplyLogoColor = async (logoUrl: string): Promise<string> => {
@@ -638,7 +889,6 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const filteredInvoices = useMemo(() => {
     let result = [...invoices];
 
-    // Search query: search in invoiceNumber, client name, client company, client email, items description
     if (filters.searchQuery.trim()) {
       const q = filters.searchQuery.toLowerCase().trim();
       result = result.filter(
@@ -653,12 +903,10 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       );
     }
 
-    // Status filter
     if (filters.status !== 'all') {
       result = result.filter((inv) => inv.status === filters.status);
     }
 
-    // Vendor / Client filter
     if (filters.vendorId && filters.vendorId !== 'all') {
       const selectedClient = clients.find((c) => c.id === filters.vendorId);
       result = result.filter((inv) => {
@@ -669,7 +917,6 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       });
     }
 
-    // Date range filter
     if (filters.dateRange !== 'all') {
       const now = new Date();
       const todayStr = now.toISOString().split('T')[0];
@@ -710,7 +957,6 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       });
     }
 
-    // Amount range
     if (filters.minAmount !== undefined && filters.minAmount > 0) {
       result = result.filter((inv) => inv.totalAmount >= (filters.minAmount || 0));
     }
@@ -718,7 +964,6 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       result = result.filter((inv) => inv.totalAmount <= (filters.maxAmount || Infinity));
     }
 
-    // Sorting
     result.sort((a, b) => {
       if (filters.sortBy === 'date-desc') {
         return new Date(b.issueDate).getTime() - new Date(a.issueDate).getTime();
@@ -742,9 +987,9 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
 
     return result;
-  }, [invoices, filters]);
+  }, [invoices, filters, clients]);
 
-  // Comprehensive financial metrics
+  // Financial metrics
   const metrics: DashboardMetrics = useMemo(() => {
     let totalInvoiced = 0;
     let totalPaid = 0;
@@ -757,22 +1002,20 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     invoices.forEach((inv) => {
       totalInvoiced += inv.totalAmount;
-      totalPaid += inv.paidAmount;
-
       if (inv.status === 'paid') {
+        totalPaid += inv.totalAmount;
         paidCount++;
       } else if (inv.status === 'pending') {
-        pendingCount++;
         totalPending += inv.balanceDue;
+        pendingCount++;
       } else if (inv.status === 'overdue') {
-        overdueCount++;
         totalOverdue += inv.balanceDue;
+        overdueCount++;
       } else if (inv.status === 'draft') {
         draftCount++;
       }
     });
 
-    // Expenses calculations
     let totalExpenses = 0;
     let totalPaidExpenses = 0;
     let totalPendingExpenses = 0;
@@ -786,12 +1029,11 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
     });
 
-    const netProfit = totalPaid - totalPaidExpenses;
-    const netInvoicedProfit = totalInvoiced - totalExpenses;
-
     const totalInvoicesCount = invoices.length;
     const avgInvoiceValue = totalInvoicesCount > 0 ? totalInvoiced / totalInvoicesCount : 0;
     const collectionRate = totalInvoiced > 0 ? (totalPaid / totalInvoiced) * 100 : 0;
+    const netProfit = totalPaid - totalPaidExpenses;
+    const netInvoicedProfit = totalInvoiced - totalExpenses;
 
     return {
       totalInvoiced,
@@ -814,9 +1056,8 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
   }, [invoices, expenses]);
 
-  // Export to CSV
   const exportToCSV = (selectedInvoices?: Invoice[]) => {
-    const listToExport = selectedInvoices || (filteredInvoices.length > 0 ? filteredInvoices : invoices);
+    const listToExport = selectedInvoices || invoices;
     if (listToExport.length === 0) return;
 
     const headers = [
@@ -824,19 +1065,14 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       'Issue Date',
       'Due Date',
       'Status',
-      'Client / Vendor',
-      'Company',
-      'Email',
-      'Phone',
-      'Items Summary',
+      'Client Name',
+      'Client Email',
       'Subtotal',
-      'Tax (%)',
       'Tax Amount',
       'Discount Amount',
       'Total Amount',
       'Paid Amount',
       'Balance Due',
-      'Currency',
     ];
 
     const rows = listToExport.map((inv) => [
@@ -844,63 +1080,56 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       `"${inv.issueDate}"`,
       `"${inv.dueDate}"`,
       `"${inv.status.toUpperCase()}"`,
-      `"${(inv.client?.name || '').replace(/"/g, '""')}"`,
-      `"${(inv.client?.company || '').replace(/"/g, '""')}"`,
-      `"${inv.client?.email || ''}"`,
-      `"${inv.client?.phone || ''}"`,
-      `"${(inv.items || []).map((i) => `${i.description} (x${i.quantity})`).join('; ').replace(/"/g, '""')}"`,
+      `"${inv.client.name.replace(/"/g, '""')}"`,
+      `"${inv.client.email}"`,
       inv.subtotal,
-      `${inv.taxRate || 0}%`,
-      inv.taxAmount || 0,
-      inv.discountAmount || 0,
+      inv.taxAmount,
+      inv.discountAmount,
       inv.totalAmount,
       inv.paidAmount,
       inv.balanceDue,
-      `"${inv.currency?.code || 'BDT'}"`,
     ]);
 
-    const safeFileName = (companyProfile.name || 'Zoolyum').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const safeFileName = (companyProfile.name || 'Company').replace(/[^a-zA-Z0-9_-]/g, '_');
     const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\r\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${safeFileName}_Invoices_Ledger_${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = `${safeFileName}_Invoices_Export_${new Date().toISOString().split('T')[0]}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
 
-  // Export to Excel compatible HTML format
   const exportToExcelData = (selectedInvoices?: Invoice[]) => {
-    const listToExport = selectedInvoices || filteredInvoices;
+    const listToExport = selectedInvoices || invoices;
     if (listToExport.length === 0) return;
 
     const tableRows = listToExport.map((inv) => `
       <tr>
-        <td>${inv.invoiceNumber}</td>
+        <td><b>${inv.invoiceNumber}</b></td>
         <td>${inv.issueDate}</td>
         <td>${inv.dueDate}</td>
-        <td><b>${inv.status.toUpperCase()}</b></td>
+        <td>${inv.status.toUpperCase()}</td>
         <td>${inv.client.name}</td>
         <td>${inv.client.company || ''}</td>
         <td>${inv.client.phone}</td>
         <td>${inv.client.email}</td>
-        <td>${inv.items.map(i => `${i.description} (Qty: ${i.quantity})`).join('<br/>')}</td>
-        <td>${inv.currency.symbol} ${inv.subtotal.toLocaleString()}</td>
-        <td>${inv.taxRate}% (${inv.currency.symbol} ${inv.taxAmount.toLocaleString()})</td>
-        <td>${inv.currency.symbol} ${inv.discountAmount.toLocaleString()}</td>
-        <td style="font-weight:bold; color:#ea580c;">${inv.currency.symbol} ${inv.totalAmount.toLocaleString()}</td>
-        <td style="color:#16a34a;">${inv.currency.symbol} ${inv.paidAmount.toLocaleString()}</td>
-        <td style="color:#dc2626;">${inv.currency.symbol} ${inv.balanceDue.toLocaleString()}</td>
+        <td>${inv.items.map((i) => `${i.description} (x${i.quantity})`).join(', ')}</td>
+        <td>${inv.subtotal}</td>
+        <td>${inv.taxAmount}</td>
+        <td>${inv.discountAmount}</td>
+        <td style="font-weight:bold; color:#ff5400;">${inv.totalAmount}</td>
+        <td>${inv.paidAmount}</td>
+        <td>${inv.balanceDue}</td>
       </tr>
     `).join('');
 
     const excelTemplate = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
       <head>
-        <!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>${companyProfile.name || 'Company'} Invoices</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
         <meta http-equiv="content-type" content="text/plain; charset=UTF-8"/>
         <style>
           table { border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; }
@@ -1050,6 +1279,8 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         exportToJSON,
         importFromJSON,
         resetToSampleData,
+        isDbConnected,
+        refreshData: fetchFromDatabase,
       }}
     >
       {children}

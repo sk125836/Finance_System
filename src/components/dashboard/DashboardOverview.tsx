@@ -358,21 +358,41 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           <div className="overflow-x-auto flex-1">
             {displayedInvoices.length === 0 ? (
               <div className="py-12 px-6 text-center space-y-3">
-                <div className="w-12 h-12 rounded-2xl bg-zinc-100 dark:bg-zinc-800 mx-auto flex items-center justify-center text-zinc-400">
+                <div className="w-12 h-12 rounded-2xl bg-orange-500/10 text-orange-500 mx-auto flex items-center justify-center">
                   <Receipt className="w-6 h-6" />
                 </div>
-                <h4 className="font-bold text-sm text-zinc-800 dark:text-zinc-200">
-                  No invoices match your filter
-                </h4>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400 max-w-xs mx-auto">
-                  Try changing your status button or selecting a different vendor to view bills.
-                </p>
-                <button
-                  onClick={() => resetFilters()}
-                  className="px-4 py-2 rounded-xl bg-orange-500 text-white font-bold text-xs shadow-md shadow-orange-500/20 hover:bg-orange-600 transition cursor-pointer"
-                >
-                  Clear All Filters
-                </button>
+                {invoices.length === 0 ? (
+                  <>
+                    <h4 className="font-bold text-sm text-zinc-800 dark:text-zinc-200">
+                      No invoices created yet
+                    </h4>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400 max-w-xs mx-auto">
+                      Your account is ready! Create your first invoice or bill to see details here.
+                    </p>
+                    <button
+                      onClick={onOpenCreate}
+                      className="px-4 py-2 rounded-xl bg-orange-500 text-white font-bold text-xs shadow-md shadow-orange-500/20 hover:bg-orange-600 transition cursor-pointer inline-flex items-center gap-1.5"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Create First Invoice</span>
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <h4 className="font-bold text-sm text-zinc-800 dark:text-zinc-200">
+                      No invoices match your filter
+                    </h4>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400 max-w-xs mx-auto">
+                      Try changing your status button or selecting a different vendor to view bills.
+                    </p>
+                    <button
+                      onClick={() => resetFilters()}
+                      className="px-4 py-2 rounded-xl bg-orange-500 text-white font-bold text-xs shadow-md shadow-orange-500/20 hover:bg-orange-600 transition cursor-pointer"
+                    >
+                      Clear All Filters
+                    </button>
+                  </>
+                )}
               </div>
             ) : (
               <table className="w-full text-left text-xs">
@@ -477,34 +497,46 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             </div>
 
             <div className="space-y-2.5">
-              {sortedClients.map((client, idx) => (
-                <div
-                  key={client.id}
-                  onClick={() => {
-                    setFilters((prev) => ({ ...prev, vendorId: client.id }));
-                    setActiveTab('invoices');
-                  }}
-                  className="p-2.5 sm:p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 hover:bg-orange-50/50 dark:hover:bg-orange-500/10 border border-zinc-200 dark:border-zinc-700/80 transition cursor-pointer flex items-center justify-between"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-orange-500/15 text-orange-500 font-black text-[11px] sm:text-xs flex items-center justify-center shrink-0">
-                      {idx + 1}
-                    </div>
-                    <div>
-                      <div className="font-semibold text-xs text-zinc-900 dark:text-zinc-100 truncate max-w-[120px] sm:max-w-[140px]">
-                        {client.name}
-                      </div>
-                      <div className="text-[10px] text-zinc-400">{client.invoicesCount || 0} bills issued</div>
-                    </div>
-                  </div>
-
-                  <div className="text-right shrink-0">
-                    <div className="text-xs font-bold text-orange-600 dark:text-orange-400">
-                      {activeCurrency.symbol} {(client.totalBilled || 0).toLocaleString()}
-                    </div>
-                  </div>
+              {sortedClients.length === 0 ? (
+                <div className="py-6 text-center text-zinc-400 dark:text-zinc-500 text-xs">
+                  <p>No clients or vendors added yet.</p>
+                  <button
+                    onClick={() => setActiveTab('vendors')}
+                    className="mt-2 text-xs font-semibold text-orange-500 hover:underline cursor-pointer"
+                  >
+                    + Add your first client
+                  </button>
                 </div>
-              ))}
+              ) : (
+                sortedClients.map((client, idx) => (
+                  <div
+                    key={client.id}
+                    onClick={() => {
+                      setFilters((prev) => ({ ...prev, vendorId: client.id }));
+                      setActiveTab('invoices');
+                    }}
+                    className="p-2.5 sm:p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 hover:bg-orange-50/50 dark:hover:bg-orange-500/10 border border-zinc-200 dark:border-zinc-700/80 transition cursor-pointer flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-orange-500/15 text-orange-500 font-black text-[11px] sm:text-xs flex items-center justify-center shrink-0">
+                        {idx + 1}
+                      </div>
+                      <div>
+                        <div className="font-semibold text-xs text-zinc-900 dark:text-zinc-100 truncate max-w-[120px] sm:max-w-[140px]">
+                          {client.name}
+                        </div>
+                        <div className="text-[10px] text-zinc-400">{client.invoicesCount || 0} bills issued</div>
+                      </div>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <div className="text-xs font-bold text-orange-600 dark:text-orange-400">
+                        {activeCurrency.symbol} {(client.totalBilled || 0).toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
@@ -515,7 +547,11 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               <span>Financial Health Summary</span>
             </div>
             <p className="text-xs text-zinc-700 dark:text-zinc-300">
-              Your average invoice ticket is <span className="font-bold text-orange-500">{activeCurrency.symbol} {Math.round(metrics.avgInvoiceValue).toLocaleString()}</span>. Total logged expenses stand at <span className="font-bold text-red-500">{activeCurrency.symbol} {metrics.totalExpenses.toLocaleString()}</span>.
+              {metrics.totalInvoicesCount === 0 && metrics.expensesCount === 0 ? (
+                <span>No transactions recorded yet. Create an invoice or log business expenses to monitor net profit & metrics.</span>
+              ) : (
+                <>Your average invoice ticket is <span className="font-bold text-orange-500">{activeCurrency.symbol} {Math.round(metrics.avgInvoiceValue).toLocaleString()}</span>. Total logged expenses stand at <span className="font-bold text-red-500">{activeCurrency.symbol} {metrics.totalExpenses.toLocaleString()}</span>.</>
+              )}
             </p>
             <div className="grid grid-cols-2 gap-2 pt-1">
               <button

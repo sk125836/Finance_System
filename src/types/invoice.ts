@@ -1,3 +1,12 @@
+export interface AuthUser {
+  id: string;
+  name: string;
+  email: string;
+  role?: 'admin' | 'user';
+  avatarUrl?: string;
+  createdAt?: string;
+}
+
 export type ExpenseCategory =
   | 'marketing'
   | 'office'
