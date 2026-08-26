@@ -11,7 +11,6 @@ import {
   Menu,
   LogOut,
   LogIn,
-  Shield,
 } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useInvoice } from '../../context/InvoiceContext';
@@ -203,10 +202,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <div className="px-3.5 py-2 border-b border-zinc-100 dark:border-zinc-800">
                     <div className="text-xs font-bold text-zinc-900 dark:text-white truncate">{user.name}</div>
                     <div className="text-[11px] text-zinc-500 truncate">{user.email}</div>
-                    <div className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                      <Shield className="w-2.5 h-2.5" />
-                      <span>Cloud Database Synced</span>
-                    </div>
                   </div>
                   <button
                     onClick={logout}
