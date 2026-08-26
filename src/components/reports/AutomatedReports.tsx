@@ -23,7 +23,7 @@ import { ZoolyumLogo } from '../common/ZoolyumLogo';
 import { AuthorizedSignatureDisplay } from '../common/AuthorizedSignatureDisplay';
 
 export const AutomatedReports: React.FC = () => {
-  const { invoices, expenses, clients, metrics, companyProfile, activeCurrency, exportToCSV, exportToExcelData } = useInvoice();
+  const { invoices, expenses, clients, metrics, companyProfile, activeCurrency, convertAmount, exportToCSV, exportToExcelData } = useInvoice();
 
   const [isExportingPDF, setIsExportingPDF] = useState(false);
 
@@ -41,16 +41,20 @@ export const AutomatedReports: React.FC = () => {
         due: 0,
       };
 
-      existing.total += inv.totalAmount;
+      const cTotal = convertAmount(inv.totalAmount, inv.currency?.code || 'BDT', activeCurrency.code);
+      const cPaid = convertAmount(inv.paidAmount, inv.currency?.code || 'BDT', activeCurrency.code);
+      const cDue = convertAmount(inv.balanceDue, inv.currency?.code || 'BDT', activeCurrency.code);
+
+      existing.total += cTotal;
       existing.count += 1;
-      existing.paid += inv.paidAmount;
-      existing.due += inv.balanceDue;
+      existing.paid += cPaid;
+      existing.due += cDue;
 
       map.set(clientName, existing);
     });
 
     return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  }, [invoices]);
+  }, [invoices, activeCurrency, convertAmount]);
 
   // Expense Category Breakdown Calculation
   const expenseCategoryBreakdown = useMemo(() => {
@@ -59,17 +63,24 @@ export const AutomatedReports: React.FC = () => {
     expenses.forEach((exp) => {
       const cat = exp.category || 'general';
       const existing = map.get(cat) || { category: cat, total: 0, count: 0 };
-      existing.total += exp.amount;
+      const cAmount = convertAmount(exp.amount, exp.currency?.code || 'BDT', activeCurrency.code);
+      existing.total += cAmount;
       existing.count += 1;
       map.set(cat, existing);
     });
 
     return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  }, [expenses]);
+  }, [expenses, activeCurrency, convertAmount]);
 
   // Tax & Discount Totals
-  const totalTaxCollected = invoices.reduce((sum, i) => sum + i.taxAmount, 0);
-  const totalDiscountsGiven = invoices.reduce((sum, i) => sum + i.discountAmount, 0);
+  const totalTaxCollected = invoices.reduce(
+    (sum, i) => sum + convertAmount(i.taxAmount, i.currency?.code || 'BDT', activeCurrency.code),
+    0
+  );
+  const totalDiscountsGiven = invoices.reduce(
+    (sum, i) => sum + convertAmount(i.discountAmount, i.currency?.code || 'BDT', activeCurrency.code),
+    0
+  );
 
   // Generate Report PDF
   const handleDownloadReportPDF = async () => {

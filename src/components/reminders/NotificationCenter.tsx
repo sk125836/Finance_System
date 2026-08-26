@@ -38,15 +38,26 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
 
   // Close on outside click
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
         setIsOpen(false);
       }
     };
     if (isOpen) {
       document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside);
+      document.addEventListener('keydown', handleKeyDown);
     }
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, [isOpen]);
 
   const handleSendAllOverdue = async () => {
@@ -65,7 +76,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="relative p-2 rounded-xl text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition focus:outline-none"
+        className="relative p-2 rounded-xl text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition focus:outline-none cursor-pointer"
         title="Payment Reminder Alerts"
       >
         <Bell className="w-5 h-5" />
@@ -82,7 +93,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
 
       {/* Notification Dropdown Panel */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+        <div className="fixed inset-x-3 top-16 max-w-sm sm:max-w-none sm:absolute sm:inset-auto sm:right-0 sm:top-full sm:mt-2 sm:w-96 mx-auto sm:mx-0 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
           {/* Header */}
           <div className="px-4 py-3.5 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-950/60 flex items-center justify-between">
             <div className="flex items-center gap-2">

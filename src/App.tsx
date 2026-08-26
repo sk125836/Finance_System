@@ -134,7 +134,7 @@ function MainApp() {
           />
 
           {/* Dynamic Page Views */}
-          <main className="flex-1 overflow-y-auto p-3.5 sm:p-6 lg:p-8 pb-24 sm:pb-8 custom-scrollbar">
+          <main className="flex-1 overflow-y-auto p-3.5 sm:p-6 lg:p-8 pb-28 sm:pb-8 custom-scrollbar">
             {activeTab === 'dashboard' && (
               <DashboardOverview
                 setActiveTab={setActiveTab}

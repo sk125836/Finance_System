@@ -57,6 +57,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
     setSelectedInvoiceForReminder,
     companyProfile,
     activeCurrency,
+    convertAmount,
   } = useInvoice();
 
   // Status quick filter handler
@@ -103,10 +104,10 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 sm:gap-3 w-full md:w-auto">
             <button
               onClick={onOpenCreate}
-              className="flex items-center gap-2 px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl bg-gradient-to-r from-orange-600 via-orange-500 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white font-bold text-xs sm:text-sm shadow-lg shadow-orange-500/25 transition active:scale-95 cursor-pointer"
+              className="col-span-2 sm:col-span-1 flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl bg-gradient-to-r from-orange-600 via-orange-500 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white font-bold text-xs sm:text-sm shadow-lg shadow-orange-500/25 transition active:scale-95 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>+ New Invoice</span>
@@ -114,19 +115,19 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
 
             <button
               onClick={() => setActiveTab('expenses')}
-              className="flex items-center gap-2 px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 font-semibold text-xs sm:text-sm transition cursor-pointer"
+              className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 font-semibold text-xs sm:text-sm transition cursor-pointer"
             >
-              <TrendingDown className="w-4 h-4 text-red-400" />
-              <span>Expenses ({expenses.length})</span>
+              <TrendingDown className="w-4 h-4 text-red-400 shrink-0" />
+              <span className="truncate">Expenses ({expenses.length})</span>
             </button>
 
             <button
               onClick={() => exportToCSV()}
-              className="flex items-center gap-1.5 px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 font-semibold text-xs sm:text-sm transition cursor-pointer"
+              className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 font-semibold text-xs sm:text-sm transition cursor-pointer"
               title="Export CSV"
             >
-              <Download className="w-4 h-4 text-orange-400" />
-              <span className="hidden sm:inline">Export</span>
+              <Download className="w-4 h-4 text-orange-400 shrink-0" />
+              <span>Export CSV</span>
             </button>
           </div>
         </div>
@@ -438,7 +439,18 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                           {inv.issueDate}
                         </td>
                         <td className="py-3.5 px-3 sm:px-4 text-right font-bold text-zinc-900 dark:text-zinc-100 whitespace-nowrap">
-                          {inv.currency.symbol} {inv.totalAmount.toLocaleString()}
+                          {inv.currency.code === activeCurrency.code ? (
+                            <span>{inv.currency.symbol} {inv.totalAmount.toLocaleString()}</span>
+                          ) : (
+                            <div>
+                              <div className="text-zinc-900 dark:text-zinc-100 font-black">
+                                {activeCurrency.symbol} {convertAmount(inv.totalAmount, inv.currency.code, activeCurrency.code).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                              </div>
+                              <div className="text-[10px] font-normal text-zinc-400">
+                                Orig: {inv.currency.symbol} {inv.totalAmount.toLocaleString()}
+                              </div>
+                            </div>
+                          )}
                         </td>
                         <td className="py-3.5 px-3 sm:px-4 text-center whitespace-nowrap">
                           <span

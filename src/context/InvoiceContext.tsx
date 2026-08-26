@@ -1,6 +1,16 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { Invoice, ClientVendor, CompanyProfile, FilterOptions, InvoiceStatus, ReminderLog, AutomationSettings, Expense } from '../types/invoice';
-import { DEFAULT_ZOOLYUM_PROFILE, INITIAL_CLIENTS, INITIAL_INVOICES, INITIAL_EXPENSES, SUPPORTED_CURRENCIES } from '../types/mockData';
+import { DEFAULT_ZOOLYUM_PROFILE, INITIAL_CLIENTS, INITIAL_INVOICES, INITIAL_EXPENSES } from '../types/mockData';
+import {
+  CurrencyInfo,
+  ExchangeRatesData,
+  fetchLiveExchangeRates,
+  convertCurrency,
+  getExchangeRate,
+  formatConvertedAmount,
+  SUPPORTED_CURRENCIES,
+  FALLBACK_RATES_FROM_BDT,
+} from '../utils/currencyService';
 import { DEFAULT_AUTOMATION_SETTINGS, ReminderTemplateType, getInvoicesRequiringReminders, generateEmailContent } from '../utils/reminderService';
 import { applyDynamicTheme, extractDominantColor, generatePaletteFromPrimary, BrandPalette } from '../utils/colorExtractor';
 import { useAuth } from './AuthContext';
@@ -44,8 +54,16 @@ interface InvoiceContextType {
   clients: ClientVendor[];
   expenses: Expense[];
   companyProfile: CompanyProfile;
-  activeCurrency: { symbol: string; code: string; name: string };
-  setActiveCurrency: (currency: { symbol: string; code: string; name: string }) => void;
+  activeCurrency: CurrencyInfo;
+  setActiveCurrency: (currency: CurrencyInfo) => void;
+  // Live Currency Exchange & Conversion
+  ratesData: ExchangeRatesData | null;
+  exchangeRates: Record<string, number>;
+  isRatesLoading: boolean;
+  refreshExchangeRates: () => Promise<void>;
+  convertAmount: (amount: number, fromCode?: string, toCode?: string) => number;
+  formatConverted: (amount: number, fromCode?: string, targetCurrency?: { symbol: string; code: string }) => string;
+  getRateBetween: (fromCode: string, toCode: string) => number;
   filters: FilterOptions;
   setFilters: React.Dispatch<React.SetStateAction<FilterOptions>>;
   resetFilters: () => void;
@@ -185,8 +203,67 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [isDbConnected, setIsDbConnected] = useState(false);
   const [selectedInvoiceForReminder, setSelectedInvoiceForReminder] = useState<Invoice | null>(null);
 
-  const [activeCurrency, setActiveCurrency] = useState<{ symbol: string; code: string; name: string }>(
+  // Active Currency state
+  const [activeCurrency, setActiveCurrency] = useState<CurrencyInfo>(
     SUPPORTED_CURRENCIES[0]
+  );
+
+  // Live Exchange Rates state
+  const [ratesData, setRatesData] = useState<ExchangeRatesData | null>(null);
+  const [isRatesLoading, setIsRatesLoading] = useState(false);
+
+  // Fetch live exchange rates from Google / Open Exchange Rates
+  const refreshExchangeRates = useCallback(async () => {
+    setIsRatesLoading(true);
+    try {
+      const data = await fetchLiveExchangeRates();
+      setRatesData(data);
+    } catch (err) {
+      console.warn('Failed to refresh exchange rates:', err);
+    } finally {
+      setIsRatesLoading(false);
+    }
+  }, []);
+
+  // Fetch on mount
+  useEffect(() => {
+    refreshExchangeRates();
+    // Auto-refresh rates every 15 minutes
+    const interval = setInterval(refreshExchangeRates, 15 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [refreshExchangeRates]);
+
+  const exchangeRates = useMemo(() => {
+    return ratesData?.rates || FALLBACK_RATES_FROM_BDT;
+  }, [ratesData]);
+
+  // Convert amount between currencies using live rates
+  const convertAmount = useCallback(
+    (amount: number, fromCode: string = 'BDT', toCode: string = activeCurrency.code): number => {
+      return convertCurrency(amount, fromCode, toCode, exchangeRates);
+    },
+    [activeCurrency.code, exchangeRates]
+  );
+
+  // Format converted amount
+  const formatConverted = useCallback(
+    (
+      amount: number,
+      fromCode: string = 'BDT',
+      targetCurrency: { symbol: string; code: string } = activeCurrency
+    ): string => {
+      const converted = convertCurrency(amount, fromCode, targetCurrency.code, exchangeRates);
+      return formatConvertedAmount(converted, targetCurrency);
+    },
+    [activeCurrency, exchangeRates]
+  );
+
+  // Rate between two currencies helper
+  const getRateBetween = useCallback(
+    (fromCode: string, toCode: string): number => {
+      return getExchangeRate(fromCode, toCode, exchangeRates);
+    },
+    [exchangeRates]
   );
 
   const [filters, setFilters] = useState<FilterOptions>(defaultFilters);
@@ -461,19 +538,44 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return count;
   };
 
-  // Calculate live attention summary
+  // Calculate live attention summary with dynamic currency conversion
   const attentionSummary = useMemo(() => {
-    return getInvoicesRequiringReminders(invoices, automationSettings);
-  }, [invoices, automationSettings]);
+    const raw = getInvoicesRequiringReminders(invoices, automationSettings);
+    
+    // Convert amounts to active currency
+    let totalOverdueConverted = 0;
+    let totalAttentionConverted = 0;
 
-  // Recalculate client billed totals whenever invoices change
+    raw.overdueInvoices.forEach((inv) => {
+      const invCur = inv.currency?.code || 'BDT';
+      const amt = inv.balanceDue || inv.totalAmount;
+      totalOverdueConverted += convertCurrency(amt, invCur, activeCurrency.code, exchangeRates);
+    });
+
+    raw.allAttentionInvoices.forEach((inv) => {
+      const invCur = inv.currency?.code || 'BDT';
+      const amt = inv.balanceDue || inv.totalAmount;
+      totalAttentionConverted += convertCurrency(amt, invCur, activeCurrency.code, exchangeRates);
+    });
+
+    return {
+      ...raw,
+      totalOverdueAmount: totalOverdueConverted,
+      totalAttentionAmount: totalAttentionConverted,
+    };
+  }, [invoices, automationSettings, activeCurrency.code, exchangeRates]);
+
+  // Recalculate client billed totals whenever invoices change or active currency changes
   useEffect(() => {
     setClients((prevClients) =>
       prevClients.map((client) => {
         const clientInvoices = invoices.filter(
           (inv) => inv.client.id === client.id || inv.client.name.toLowerCase() === client.name.toLowerCase()
         );
-        const totalBilled = clientInvoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
+        const totalBilled = clientInvoices.reduce((sum, inv) => {
+          const invCur = inv.currency?.code || 'BDT';
+          return sum + convertCurrency(inv.totalAmount, invCur, activeCurrency.code, exchangeRates);
+        }, 0);
         return {
           ...client,
           totalBilled,
@@ -481,7 +583,7 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         };
       })
     );
-  }, [invoices]);
+  }, [invoices, activeCurrency.code, exchangeRates]);
 
   const resetFilters = () => {
     setFilters(defaultFilters);
@@ -989,7 +1091,7 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return result;
   }, [invoices, filters, clients]);
 
-  // Financial metrics
+  // Financial metrics converted live to activeCurrency
   const metrics: DashboardMetrics = useMemo(() => {
     let totalInvoiced = 0;
     let totalPaid = 0;
@@ -1001,15 +1103,20 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     let draftCount = 0;
 
     invoices.forEach((inv) => {
-      totalInvoiced += inv.totalAmount;
+      const invCur = inv.currency?.code || 'BDT';
+      const invoicedInActive = convertCurrency(inv.totalAmount, invCur, activeCurrency.code, exchangeRates);
+      const paidInActive = convertCurrency(inv.paidAmount, invCur, activeCurrency.code, exchangeRates);
+      const dueInActive = convertCurrency(inv.balanceDue, invCur, activeCurrency.code, exchangeRates);
+
+      totalInvoiced += invoicedInActive;
       if (inv.status === 'paid') {
-        totalPaid += inv.totalAmount;
+        totalPaid += invoicedInActive;
         paidCount++;
       } else if (inv.status === 'pending') {
-        totalPending += inv.balanceDue;
+        totalPending += dueInActive;
         pendingCount++;
       } else if (inv.status === 'overdue') {
-        totalOverdue += inv.balanceDue;
+        totalOverdue += dueInActive;
         overdueCount++;
       } else if (inv.status === 'draft') {
         draftCount++;
@@ -1021,11 +1128,13 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     let totalPendingExpenses = 0;
 
     expenses.forEach((exp) => {
-      totalExpenses += exp.amount;
+      const expCur = exp.currency?.code || 'BDT';
+      const expInActive = convertCurrency(exp.amount, expCur, activeCurrency.code, exchangeRates);
+      totalExpenses += expInActive;
       if (exp.status === 'paid') {
-        totalPaidExpenses += exp.amount;
+        totalPaidExpenses += expInActive;
       } else {
-        totalPendingExpenses += exp.amount;
+        totalPendingExpenses += expInActive;
       }
     });
 
@@ -1054,7 +1163,7 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       netInvoicedProfit,
       expensesCount: expenses.length,
     };
-  }, [invoices, expenses]);
+  }, [invoices, expenses, activeCurrency.code, exchangeRates]);
 
   const exportToCSV = (selectedInvoices?: Invoice[]) => {
     const listToExport = selectedInvoices || invoices;
@@ -1243,6 +1352,13 @@ export const InvoiceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         companyProfile,
         activeCurrency,
         setActiveCurrency,
+        ratesData,
+        exchangeRates,
+        isRatesLoading,
+        refreshExchangeRates,
+        convertAmount,
+        formatConverted,
+        getRateBetween,
         filters,
         setFilters,
         resetFilters,

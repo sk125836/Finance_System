@@ -54,6 +54,7 @@ export const ExpenseManager: React.FC<ExpenseManagerProps> = ({ onOpenCreateInvo
     companyProfile,
     activeCurrency,
     metrics,
+    convertAmount,
   } = useInvoice();
 
   // Search and Filter State
@@ -256,11 +257,15 @@ export const ExpenseManager: React.FC<ExpenseManagerProps> = ({ onOpenCreateInvo
       if (!map[exp.category]) {
         map[exp.category] = { total: 0, count: 0 };
       }
-      map[exp.category].total += exp.amount;
+      const convertedVal = convertAmount(exp.amount, exp.currency?.code || 'BDT', activeCurrency.code);
+      map[exp.category].total += convertedVal;
       map[exp.category].count += 1;
     });
 
-    const totalAll = expenses.reduce((acc, e) => acc + e.amount, 0) || 1;
+    const totalAll = expenses.reduce(
+      (acc, e) => acc + convertAmount(e.amount, e.currency?.code || 'BDT', activeCurrency.code),
+      0
+    ) || 1;
 
     return EXPENSE_CATEGORIES.map((cat) => {
       const data = map[cat.id] || { total: 0, count: 0 };
@@ -272,11 +277,18 @@ export const ExpenseManager: React.FC<ExpenseManagerProps> = ({ onOpenCreateInvo
         percent,
       };
     }).sort((a, b) => b.total - a.total);
-  }, [expenses]);
+  }, [expenses, activeCurrency, convertAmount]);
 
-  const filteredTotal = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
-  const filteredPaid = filteredExpenses.filter((e) => e.status === 'paid').reduce((sum, e) => sum + e.amount, 0);
-  const filteredPending = filteredExpenses.filter((e) => e.status === 'pending').reduce((sum, e) => sum + e.amount, 0);
+  const filteredTotal = filteredExpenses.reduce(
+    (sum, e) => sum + convertAmount(e.amount, e.currency?.code || 'BDT', activeCurrency.code),
+    0
+  );
+  const filteredPaid = filteredExpenses
+    .filter((e) => e.status === 'paid')
+    .reduce((sum, e) => sum + convertAmount(e.amount, e.currency?.code || 'BDT', activeCurrency.code), 0);
+  const filteredPending = filteredExpenses
+    .filter((e) => e.status === 'pending')
+    .reduce((sum, e) => sum + convertAmount(e.amount, e.currency?.code || 'BDT', activeCurrency.code), 0);
 
   const getCategoryConfig = (catId: ExpenseCategory) => {
     return EXPENSE_CATEGORIES.find((c) => c.id === catId) || EXPENSE_CATEGORIES[0];
@@ -709,7 +721,18 @@ export const ExpenseManager: React.FC<ExpenseManagerProps> = ({ onOpenCreateInvo
                       </td>
 
                       <td className="py-3.5 px-4 text-right font-black text-orange-600 dark:text-orange-400 whitespace-nowrap font-mono">
-                        {exp.currency?.symbol || activeCurrency.symbol} {exp.amount.toLocaleString()}
+                        {(exp.currency?.code || 'BDT') === activeCurrency.code ? (
+                          <span>{activeCurrency.symbol} {exp.amount.toLocaleString()}</span>
+                        ) : (
+                          <div>
+                            <div>
+                              {activeCurrency.symbol} {convertAmount(exp.amount, exp.currency?.code || 'BDT', activeCurrency.code).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                            </div>
+                            <div className="text-[10px] font-normal text-zinc-400 font-sans">
+                              Orig: {exp.currency?.symbol || '৳'} {exp.amount.toLocaleString()}
+                            </div>
+                          </div>
+                        )}
                       </td>
 
                       <td className="py-3.5 px-4 text-center whitespace-nowrap">

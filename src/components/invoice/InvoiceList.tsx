@@ -52,6 +52,8 @@ export const InvoiceList: React.FC<InvoiceListProps> = ({
     exportToCSV,
     exportToExcelData,
     setSelectedInvoiceForReminder,
+    activeCurrency,
+    convertAmount,
   } = useInvoice();
 
   // Pagination State
@@ -104,10 +106,19 @@ export const InvoiceList: React.FC<InvoiceListProps> = ({
     exportToCSV(selected.length > 0 ? selected : filteredInvoices);
   };
 
-  // Filtered Summary Total Calculation
-  const filteredTotalBilled = filteredInvoices.reduce((sum, i) => sum + i.totalAmount, 0);
-  const filteredTotalPaid = filteredInvoices.reduce((sum, i) => sum + i.paidAmount, 0);
-  const filteredTotalDue = filteredInvoices.reduce((sum, i) => sum + i.balanceDue, 0);
+  // Filtered Summary Total Calculation converted live to activeCurrency
+  const filteredTotalBilled = filteredInvoices.reduce(
+    (sum, i) => sum + convertAmount(i.totalAmount, i.currency?.code || 'BDT', activeCurrency.code),
+    0
+  );
+  const filteredTotalPaid = filteredInvoices.reduce(
+    (sum, i) => sum + convertAmount(i.paidAmount, i.currency?.code || 'BDT', activeCurrency.code),
+    0
+  );
+  const filteredTotalDue = filteredInvoices.reduce(
+    (sum, i) => sum + convertAmount(i.balanceDue, i.currency?.code || 'BDT', activeCurrency.code),
+    0
+  );
 
   const statusBadgeColors: Record<string, string> = {
     paid: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
@@ -259,15 +270,15 @@ export const InvoiceList: React.FC<InvoiceListProps> = ({
             </span>
             <span>•</span>
             <span>
-              Filtered Sum: <b className="text-zinc-900 dark:text-white">৳ {filteredTotalBilled.toLocaleString()}</b>
+              Filtered Sum: <b className="text-zinc-900 dark:text-white">{activeCurrency.symbol} {filteredTotalBilled.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</b>
             </span>
             <span>•</span>
             <span>
-              Paid: <b className="text-emerald-500">৳ {filteredTotalPaid.toLocaleString()}</b>
+              Paid: <b className="text-emerald-500">{activeCurrency.symbol} {filteredTotalPaid.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</b>
             </span>
             <span>•</span>
             <span>
-              Due: <b className="text-red-500">৳ {filteredTotalDue.toLocaleString()}</b>
+              Due: <b className="text-red-500">{activeCurrency.symbol} {filteredTotalDue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</b>
             </span>
           </div>
 
@@ -384,15 +395,37 @@ export const InvoiceList: React.FC<InvoiceListProps> = ({
                         <div className="opacity-75">Due: {inv.dueDate}</div>
                       </td>
 
-                      <td className="py-3.5 px-4 text-right font-bold text-zinc-900 dark:text-zinc-100">
-                        {inv.currency.symbol} {inv.totalAmount.toLocaleString()}
+                      <td className="py-3.5 px-4 text-right font-bold text-zinc-900 dark:text-zinc-100 whitespace-nowrap">
+                        {inv.currency.code === activeCurrency.code ? (
+                          <span>{inv.currency.symbol} {inv.totalAmount.toLocaleString()}</span>
+                        ) : (
+                          <div>
+                            <div className="text-zinc-900 dark:text-zinc-100 font-black">
+                              {activeCurrency.symbol} {convertAmount(inv.totalAmount, inv.currency.code, activeCurrency.code).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                            </div>
+                            <div className="text-[10px] font-normal text-zinc-400">
+                              Orig: {inv.currency.symbol} {inv.totalAmount.toLocaleString()}
+                            </div>
+                          </div>
+                        )}
                       </td>
 
-                      <td className="py-3.5 px-4 text-right font-mono font-semibold">
+                      <td className="py-3.5 px-4 text-right font-mono font-semibold whitespace-nowrap">
                         {inv.balanceDue > 0 ? (
-                          <span className="text-red-500">
-                            {inv.currency.symbol} {inv.balanceDue.toLocaleString()}
-                          </span>
+                          inv.currency.code === activeCurrency.code ? (
+                            <span className="text-red-500">
+                              {inv.currency.symbol} {inv.balanceDue.toLocaleString()}
+                            </span>
+                          ) : (
+                            <div>
+                              <div className="text-red-500 font-black">
+                                {activeCurrency.symbol} {convertAmount(inv.balanceDue, inv.currency.code, activeCurrency.code).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                              </div>
+                              <div className="text-[10px] font-normal text-zinc-400">
+                                Orig: {inv.currency.symbol} {inv.balanceDue.toLocaleString()}
+                              </div>
+                            </div>
+                          )
                         ) : (
                           <span className="text-emerald-500">Settled (0)</span>
                         )}
